@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy import stats
+from scipy.stats import norm, ttest_ind
+import numpy as np
 
 st.set_page_config(page_title="Motion Data Dashboard", layout="wide")
 st.title("📊 Motion Data Dashboard")
@@ -14,36 +14,29 @@ if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.success("✅ File successfully uploaded!")
 
-    # Data Info
     with st.expander("📌 Data Info"):
-        st.write(f"🔢 Data Shape: {df.shape}")
-        st.write("📚 Column Types:")
+        st.write(f"📏 Data Shape: {df.shape}")
+        st.write("🧱 Column Types:")
         st.write(df.dtypes)
 
-    # Missing Values
     with st.expander("💔 Missing Value Analysis"):
         st.write(df.isnull().sum())
 
-    # Numerical Columns
     with st.expander("🔍 Numerical Columns"):
         st.write(df.select_dtypes(include='number').columns)
 
-    # Descriptive Stats + Correlation
     with st.expander("📊 Filter Options"):
-        st.write("📈 Descriptive Statistics")
+        st.subheader("Descriptive Statistics:")
         st.write(df.describe())
 
-        st.write("🔗 Correlation Matrix:")
-        corr = df.corr(numeric_only=True)
+        st.subheader("📌 Correlation Matrix:")
         fig, ax = plt.subplots(figsize=(12, 8))
-        sns.heatmap(corr, annot=False, cmap="coolwarm", ax=ax)
+        sns.heatmap(df.corr(numeric_only=True), annot=False, cmap="coolwarm", ax=ax)
         st.pyplot(fig)
 
-    # Plotting
-    with st.expander("📎 Select Column & Plot"):
+    with st.expander("🧮 Select Column & Plot"):
         num_cols = df.select_dtypes(include='number').columns
         selected = st.selectbox("Choose a numeric column:", num_cols)
-
         plot_type = st.radio("Plot type:", ["Histogram", "Boxplot", "Density Plot"])
 
         fig, ax = plt.subplots()
@@ -55,79 +48,65 @@ if uploaded_file:
             sns.kdeplot(df[selected], fill=True, ax=ax)
         st.pyplot(fig)
 
-    # Sampling + CLT
     with st.expander("🧪 Sampling & Central Limit Theorem"):
-        selected_col = st.selectbox("Choose a numeric column for sampling:", num_cols, key="sampling")
-        sample_size = st.slider("Sample size (n):", 10, 500, 100, 10)
-        num_samples = st.slider("Number of samples:", 10, 200, 50, 10)
+        sample_col = st.selectbox("Choose a numeric column for sampling:", num_cols)
+        n = st.slider("Sample size (n):", 10, 500, 100)
+        k = st.slider("Number of samples:", 10, 200, 50)
 
-        sample_means = []
-        for _ in range(num_samples):
-            sample = df[selected_col].dropna().sample(sample_size, replace=True)
-            sample_means.append(sample.mean())
-
+        sample_means = [df[sample_col].dropna().sample(n).mean() for _ in range(k)]
         fig, ax = plt.subplots()
         sns.histplot(sample_means, kde=True, ax=ax)
-        ax.set_title(f"Sampling Distribution of Sample Mean ({selected_col})")
+        ax.set_title(f"Sampling Distribution of Sample Mean ({sample_col})")
         st.pyplot(fig)
 
-    # MLE
-    with st.expander("📐 Maximum Likelihood Estimation (MLE)"):
-        selected_mle_col = st.selectbox("Select a numeric column for MLE:", num_cols, key="mle")
-        data = df[selected_mle_col].dropna()
-        mu_mle = np.mean(data)
-        sigma_mle = np.std(data)
-
-        x_vals = np.linspace(data.min(), data.max(), 100)
-        normal_dist = (1 / (sigma_mle * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_vals - mu_mle) / sigma_mle)**2)
+    with st.expander("📈 Maximum Likelihood Estimation (MLE)"):
+        mle_col = st.selectbox("Select a numeric column for MLE:", num_cols)
+        data = df[mle_col].dropna()
+        mu, std = data.mean(), data.std()
 
         fig, ax = plt.subplots()
-        sns.histplot(data, stat="density", bins=30, kde=False, ax=ax, label="Empirical")
-        ax.plot(x_vals, normal_dist, color='red', label=f"N(μ={mu_mle:.2f}, σ={sigma_mle:.2f})")
+        sns.histplot(data, stat="density", bins=30, color="steelblue", label="Empirical", ax=ax)
+        xmin, xmax = ax.get_xlim()
+        x = np.linspace(xmin, xmax, 100)
+        p = norm.pdf(x, mu, std)
+        ax.plot(x, p, "r", label=f"N(μ={mu:.2f}, σ={std:.2f})")
         ax.set_title("MLE Fit to Data")
         ax.legend()
         st.pyplot(fig)
 
-        st.markdown(f"**Estimated μ (mean):** {mu_mle:.4f}  \n**Estimated σ (std dev):** {sigma_mle:.4f}")
+        st.markdown(f"**Estimated μ (mean):** {mu:.4f}")
+        st.markdown(f"**Estimated σ (std dev):** {std:.4f}")
 
-    # Hypothesis Testing
-    with st.expander("🧪 Hypothesis Testing (t-test)"):
+    with st.expander("🔬 Hypothesis Testing (t-test)"):
         cat_cols = df.select_dtypes(include='object').columns
-        if len(cat_cols) > 0:
-            group_col = st.selectbox("Choose a categorical column:", cat_cols, key="ht_group")
-            test_col = st.selectbox("Choose a numeric column for comparison:", num_cols, key="ht_test")
-            groups = df[group_col].dropna().unique()
-            if len(groups) == 2:
-                group1 = df[df[group_col] == groups[0]][test_col].dropna()
-                group2 = df[df[group_col] == groups[1]][test_col].dropna()
-                t_stat, p_val = stats.ttest_ind(group1, group2)
-                st.write(f"Groups: {groups[0]} vs. {groups[1]}")
-                st.write(f"**t-statistic:** {t_stat:.4f}")
-                st.write(f"**p-value:** {p_val:.4f}")
-                if p_val < 0.05:
-                    st.success("📢 Result: Statistically significant difference.")
-                else:
-                    st.info("ℹ️ Result: No statistically significant difference.")
-            else:
-                st.warning("Please choose a categorical column with exactly two groups.")
+        binary_cat_cols = [col for col in cat_cols if df[col].nunique() == 2]
 
-    # Simple Linear Regression
-    with st.expander("📈 Simple Linear Regression"):
-        x_col = st.selectbox("Select independent variable (X):", num_cols, key="reg_x")
-        y_col = st.selectbox("Select dependent variable (Y):", num_cols, key="reg_y")
-        x = df[x_col].dropna()
-        y = df[y_col].dropna()
-        if len(x) == len(y) and len(x) > 2:
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-            fig, ax = plt.subplots()
-            ax.scatter(x, y, label='Data points')
-            ax.plot(x, intercept + slope * x, 'r', label=f'y = {intercept:.2f} + {slope:.2f}x')
-            ax.set_xlabel(x_col)
-            ax.set_ylabel(y_col)
-            ax.set_title("Linear Regression")
-            ax.legend()
-            st.pyplot(fig)
-            st.markdown(f"**R-squared:** {r_value**2:.4f}  \n**p-value:** {p_value:.4f}")
+        if binary_cat_cols:
+            cat_col = st.selectbox("Choose a categorical column:", binary_cat_cols)
+            ttest_col = st.selectbox("Choose a numeric column for comparison:", num_cols)
+
+            group1 = df[df[cat_col] == df[cat_col].unique()[0]][ttest_col]
+            group2 = df[df[cat_col] == df[cat_col].unique()[1]][ttest_col]
+
+            stat, pval = ttest_ind(group1.dropna(), group2.dropna(), equal_var=False)
+            st.write(f"T-statistic: {stat:.4f}")
+            st.write(f"P-value: {pval:.4f}")
+
+            if pval < 0.05:
+                st.success("✅ Statistically significant difference (reject null hypothesis).")
+            else:
+                st.info("🟡 No significant difference (fail to reject null hypothesis).")
+        else:
+            st.warning("⚠️ No suitable categorical column with exactly two unique values.")
+
+    with st.expander("📉 Simple Linear Regression"):
+        x_var = st.selectbox("Select independent variable (X):", num_cols)
+        y_var = st.selectbox("Select dependent variable (Y):", num_cols, index=1)
+
+        fig, ax = plt.subplots()
+        sns.regplot(x=df[x_var], y=df[y_var], ax=ax, line_kws={"color": "red"})
+        ax.set_title("Linear Regression")
+        st.pyplot(fig)
 
 else:
-    st.info("👉 Please upload a CSV file from the left panel.")
+    st.info("📎 Please upload a CSV file from above.")
