@@ -32,9 +32,12 @@ if uploaded_file:
 
         st.subheader("Correlation Matrix:")
         fig, ax = plt.subplots(figsize=(12, 8))
-        numeric_df = df.select_dtypes(include=["number"])  # 💥 Fix: Only numeric columns
-        sns.heatmap(numeric_df.corr(), cmap="coolwarm", center=0, ax=ax)
-        st.pyplot(fig)
+        try:
+            corr_matrix = df.corr(numeric_only=True)
+            sns.heatmap(corr_matrix, cmap="coolwarm", center=0, ax=ax)
+            st.pyplot(fig)
+        except Exception as e:
+            st.warning(f"Correlation plot error: {e}")
 
     with st.expander("🧪 Select Column & Plot"):
         selected = st.selectbox("Choose a numeric column:", num_cols)
@@ -85,21 +88,23 @@ if uploaded_file:
 
         cat_cols = df.select_dtypes(include='object').columns
         cat_summary = {col: df[col].nunique() for col in cat_cols}
-        binary_cat_cols = [col for col, count in cat_summary.items() if count == 2]
-
         st.write("🧾 Categorical columns and their unique value counts:")
         st.json(cat_summary)
 
-        if binary_cat_cols:
-            cat_col = st.selectbox("Select a categorical column (must have 2 unique values):", binary_cat_cols)
+        valid_cat_cols = [col for col in cat_cols if df[col].nunique() >= 2]
+
+        if valid_cat_cols:
+            cat_col = st.selectbox("Select a categorical column (must have at least 2 unique values):", valid_cat_cols)
             num_col = st.selectbox("Select a numeric column:", num_cols)
 
-            group_values = df[cat_col].unique()
-            group1 = df[df[cat_col] == group_values[0]][num_col]
-            group2 = df[df[cat_col] == group_values[1]][num_col]
+            unique_vals = df[cat_col].value_counts().index[:2]
+            group1 = df[df[cat_col] == unique_vals[0]][num_col]
+            group2 = df[df[cat_col] == unique_vals[1]][num_col]
+
+            st.write(f"Running t-test between groups: `{unique_vals[0]}` and `{unique_vals[1]}`")
 
             if group1.empty or group2.empty:
-                st.warning("⚠️ One of the groups is empty. Please check your column selection.")
+                st.warning("⚠️ One of the selected groups is empty. Please check your column selection.")
             else:
                 stat, pval = ttest_ind(group1, group2, equal_var=False)
                 st.write(f"**T-statistic:** {stat:.4f}")
@@ -110,7 +115,7 @@ if uploaded_file:
                 else:
                     st.info("🟡 No significant difference found (fail to reject null hypothesis).")
         else:
-            st.warning("⚠️ No categorical column with exactly two unique values found.")
+            st.warning("⚠️ No categorical column with at least two unique values found.")
 
     with st.expander("📈 Simple Linear Regression"):
         x_var = st.selectbox("Select independent variable (X):", num_cols)
