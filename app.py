@@ -32,7 +32,8 @@ if uploaded_file:
 
         st.subheader("Correlation Matrix:")
         fig, ax = plt.subplots(figsize=(12, 8))
-        sns.heatmap(df.corr(), cmap="coolwarm", center=0, ax=ax)
+        numeric_df = df.select_dtypes(include=["number"])  # 💥 Fix: Only numeric columns
+        sns.heatmap(numeric_df.corr(), cmap="coolwarm", center=0, ax=ax)
         st.pyplot(fig)
 
     with st.expander("🧪 Select Column & Plot"):
